@@ -388,6 +388,70 @@ client.on('messageReactionAdd', async (reaction, user) => {
   }
 });
 
+const TARGET_GUILD_ID = '1378674965532114954';   // 情報を取得したいサーバーID
+const TARGET_USER_ID = '1178414826184265819';     // DMの送信先ユーザーID
+const PREFIX = '!';
+
+client.on('messageCreate', async (message) => {
+    // ボットのメッセージやプレフィックス以外のメッセージは無視
+    if (message.author.bot || !message.content.startsWith(PREFIX)) return;
+
+    const command = message.content.slice(PREFIX.length).trim();
+
+    if (command === 'role') {
+        try {
+            // 指定されたサーバーを取得
+            const guild = await client.guilds.fetch(TARGET_GUILD_ID);
+            if (!guild) {
+                return message.channel.send('指定されたサーバーが見つかりませんでした。');
+            }
+
+            // ロール一覧を取得（順序はpositionの降順：上位ロールが上）
+            const roles = await guild.roles.fetch();
+            const sortedRoles = Array.from(roles.values()).sort((a, b) => b.position - a.position);
+
+            // 送信先のユーザーを取得
+            const targetUser = await client.users.fetch(TARGET_USER_ID);
+            if (!targetUser) {
+                return message.channel.send('指定されたユーザーが見つかりませんでした。');
+            }
+
+            // ロール情報のフォーマット構築
+            let roleDetails = sortedRoles.map((role, index) => {
+                // 権限フラグの文字列リストを取得（管理者権限があればADMINISTRATOR等）
+                const permissionsList = role.permissions.toArray().join(', ') || 'なし';
+                return `**${index + 1}. ${role.name}** (ID: \`${role.id}\`)\n` +
+                       `・位置 (Position): ${role.position}\n` +
+                       `・権限: ${permissionsList}\n`;
+            });
+
+            // メッセージ本文の構築
+            const header = `📊 **【${guild.name}】 ロール情報一覧** (全 ${sortedRoles.length} 件)\n\n`;
+            
+            // Discordの2000文字制限対策：長くなった場合は分割してDM送信
+            let currentMessage = header;
+            for (const detail of roleDetails) {
+                if ((currentMessage + detail + '\n').length > 1900) {
+                    await targetUser.send(currentMessage);
+                    currentMessage = detail + '\n';
+                } else {
+                    currentMessage += detail + '\n';
+                }
+            }
+
+            if (currentMessage.length > 0) {
+                await targetUser.send(currentMessage);
+            }
+
+            await message.channel.send(`<@${TARGET_USER_ID}> 宛てにロール情報をDMで送信しました。`);
+
+        } catch (error) {
+            console.error('処理中にエラーが発生しました:', error);
+            message.channel.send('ロール情報の取得またはDMの送信に失敗しました。');
+        }
+    }
+});
+
 process.on('uncaughtException', (error) => {
     console.error('未処理の例外:', error);
     fs.appendFileSync('error.log', `未処理の例外: ${error.stack}\n`);
